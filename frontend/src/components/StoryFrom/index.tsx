@@ -31,7 +31,9 @@ const App: React.FC = () => {
     const [form] = Form.useForm();
     const [allVoiceList, setAllVoiceList] = useState<string[]>([]);
     const [nowVoiceList, setNowVoiceList] = useState<string[]>([]);
-    const [llmProviders, setLLMProviders] = useState<{ textLLMProviders: string[], imageLLMProviders: string[] }>({ textLLMProviders: [], imageLLMProviders: [] });
+    const [llmProviders, setLLMProviders] = useState<LLMProvidersRes>({ textLLMProviders: [], imageLLMProviders: [], defaults: { text_llm_model: '', image_llm_model: '', resolution: '1024*1024' } });
+    const DEFAULT_LANGUAGE = 'zh-CN';
+
     useEffect(() => {
         console.log('useEffect');
         getLLMProviders().then(res => {
@@ -43,7 +45,13 @@ const App: React.FC = () => {
         getVoiceList({ area: VOICE_LANGUAGES }).then(res => {
             console.log('voiceList', res?.voices);
             if (res?.voices?.length > 0) {
-                setAllVoiceList(res?.voices)
+                setAllVoiceList(res?.voices);
+                // 初始化默认语言对应的语音列表
+                const defaultVoices = getSelectVoiceList(DEFAULT_LANGUAGE, res.voices);
+                setNowVoiceList(defaultVoices);
+                if (defaultVoices.length > 0) {
+                    form.setFieldsValue({ voice_name: defaultVoices[0].replace('-Female', '').replace('-Male', '') });
+                }
             }
         }).catch(err => {
             console.log(err);
@@ -75,8 +83,13 @@ const App: React.FC = () => {
         form.setFieldsValue({
             text_llm_provider: llmProviders.textLLMProviders?.[0],
             image_llm_provider: llmProviders.imageLLMProviders?.[0],
+            text_llm_model: llmProviders.defaults?.text_llm_model,
+            image_llm_model: llmProviders.defaults?.image_llm_model,
+            resolution: llmProviders.defaults?.resolution || '1024*1024',
+            language: DEFAULT_LANGUAGE,
+            segments: 5,
          });
-      }, [llmProviders.imageLLMProviders, llmProviders.textLLMProviders]);
+      }, [llmProviders]);
     return (
         <div className={styles.formDiv}>
             <Form
@@ -85,7 +98,7 @@ const App: React.FC = () => {
                 labelCol={{ span: 8 }}
                 wrapperCol={{ span: 16 }}
                 style={{ minWidth: 600, justifyContent: 'flex-start' }}
-                initialValues={{ remember: true, resolution: '1024*1024' }}
+                initialValues={{ remember: true }}
                 onFinish={onFinish}
                 onFinishFailed={onFinishFailed}
                 autoComplete="off"
@@ -94,7 +107,6 @@ const App: React.FC = () => {
                     label={t('storyForm.txtLLMProvider')}
                     name="text_llm_provider"
                     rules={[{ required: true, message: t('storyForm.txtLLMProviderMissMsg') }]}
-                    initialValue={llmProviders.textLLMProviders?.[0]}
                 >
                     <Select>
                         {
@@ -108,7 +120,6 @@ const App: React.FC = () => {
                     label={t('storyForm.imgLLMProvider')}
                     name="image_llm_provider"
                     rules={[{ required: true, message: t('storyForm.imgLLMProviderMissMsg') }]}
-                    initialValue={llmProviders.imageLLMProviders?.[0]}
                 >
                     <Select>
                         {
@@ -181,7 +192,7 @@ const App: React.FC = () => {
                 <Form.Item<FieldType>
                     label={t('storyForm.segments')}
                     name="segments"
-                    rules={[{ required: true, message: t('storyForm.segmentsMissMsg'), min: 1, max: 10 }]}
+                    rules={[{ required: true, message: t('storyForm.segmentsMissMsg') }]}
                 >
                     <Input type='number' min={1} max={10} placeholder="3" />
                 </Form.Item>

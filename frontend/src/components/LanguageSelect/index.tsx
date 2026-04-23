@@ -11,7 +11,7 @@ export default function LanguageSelect() {
         <div className={styles.languageCon}>
             <div className={styles.changeText}>{t('language.switchText')}</div>
             <Select
-                defaultValue={localStorage.getItem('lang') || 'en'}
+                defaultValue={localStorage.getItem('lang') || 'zh'}
                 style={{ width: 120 }}
                 options={[
                     { value: 'zh', label: '中文' },

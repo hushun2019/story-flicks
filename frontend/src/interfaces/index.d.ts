@@ -6,6 +6,11 @@ interface VoiceListRes {
 interface LLMProvidersRes {
     textLLMProviders: string[];
     imageLLMProviders: string[];
+    defaults: {
+        text_llm_model: string;
+        image_llm_model: string;
+        resolution: string;
+    };
 }
 
 interface VideoGenerateReq {
