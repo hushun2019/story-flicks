@@ -235,18 +235,36 @@ async def generate_video(request: VideoGenerateRequest):
             request.test_mode = True
             scenes = [StoryScene(**scene) for scene in story_data.get("scenes", [])]
         else:
-            req = StoryGenerationRequest(
-                resolution=request.resolution,
-                story_prompt=request.story_prompt,
-                language=request.language,
-                segments=request.segments,
-                text_llm_provider=request.text_llm_provider,
-                text_llm_model=request.text_llm_model,
-                image_llm_provider=request.image_llm_provider,
-                image_llm_model=request.image_llm_model
-            )
-            story_list = await llm_service.generate_story_with_images(request=req)
-            scenes = [StoryScene(text=scene["text"], image_prompt=scene["image_prompt"], url=scene["url"]) for scene in story_list]
+            if request.story_scenes:
+                # 用户已提供故事场景，跳过LLM故事生成，只生成图片
+                scenes = request.story_scenes
+                for scene in scenes:
+                    if not scene.url:
+                        try:
+                            image_url = llm_service.generate_image(
+                                prompt=scene.image_prompt,
+                                resolution=request.resolution,
+                                image_llm_provider=request.image_llm_provider,
+                                image_llm_model=request.image_llm_model
+                            )
+                            scene.url = image_url
+                        except Exception as e:
+                            logger.error(f"Failed to generate image: {e}")
+                            scene.url = None
+                story_list = [scene.model_dump() for scene in scenes]
+            else:
+                req = StoryGenerationRequest(
+                    resolution=request.resolution,
+                    story_prompt=request.story_prompt,
+                    language=request.language,
+                    segments=request.segments,
+                    text_llm_provider=request.text_llm_provider,
+                    text_llm_model=request.text_llm_model,
+                    image_llm_provider=request.image_llm_provider,
+                    image_llm_model=request.image_llm_model
+                )
+                story_list = await llm_service.generate_story_with_images(request=req)
+                scenes = [StoryScene(text=scene["text"], image_prompt=scene["image_prompt"], url=scene["url"]) for scene in story_list]
             
             # 保存 story.json
             story_data = request.model_dump()

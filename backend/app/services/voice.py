@@ -6,12 +6,27 @@ import json
 import edge_tts
 import re
 import xml.sax.saxutils
-from edge_tts import SubMaker, submaker
-from edge_tts.submaker import mktimestamp
+from datetime import timedelta
+from edge_tts import SubMaker
+from edge_tts.submaker import Subtitle
 from moviepy.video.tools import subtitles
 from loguru import logger
 from typing import Tuple
 from xml.sax.saxutils import unescape
+
+
+def mktimestamp(value) -> str:
+    """将 timedelta 或秒数(float) 转换为 SRT 时间戳格式 HH:MM:SS,mmm"""
+    if isinstance(value, timedelta):
+        total_seconds = value.total_seconds()
+    else:
+        # float seconds
+        total_seconds = float(value)
+    hours = int(total_seconds // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    seconds = int(total_seconds % 60)
+    milliseconds = int((total_seconds * 1000) % 1000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
 
 PUNCTUATIONS = [
     "?",
@@ -1122,7 +1137,7 @@ async def edge_tts_voice(text: str, voice_name: str, voice_file: str, voice_rate
         try:
             logger.info(f"start, voice name: {voice_name}, try: {i + 1}")
 
-            communicate = edge_tts.Communicate(text, voice_name, rate=rate_str)
+            communicate = edge_tts.Communicate(text, voice_name, rate=rate_str, boundary="WordBoundary")
             sub_maker = edge_tts.SubMaker()
             
             with open(voice_file, "wb") as file:
@@ -1131,11 +1146,10 @@ async def edge_tts_voice(text: str, voice_name: str, voice_file: str, voice_rate
                         file.write(chunk["data"])
                     elif chunk["type"] == "WordBoundary":
                         logger.debug(f"Got word boundary: {chunk}")
-                        # 使用 SubMaker 的 create_sub 方法创建字幕
-                        sub_maker.create_sub((chunk["offset"], chunk["duration"]), chunk["text"])
+                        sub_maker.feed(chunk)
 
-            if not sub_maker or not sub_maker.subs:
-                logger.warning("failed, sub_maker is None or sub_maker.subs is None")
+            if not sub_maker or not sub_maker.cues:
+                logger.warning("failed, sub_maker is None or sub_maker.cues is empty")
                 continue
 
             logger.info(f"completed, output file: {voice_file}")
@@ -1149,11 +1163,11 @@ async def edge_tts_voice(text: str, voice_name: str, voice_file: str, voice_rate
 async def generate_subtitle(sub_maker: edge_tts.SubMaker, text: str, subtitle_file: str):
     """生成字幕文件"""
     try:
-        if not sub_maker or not hasattr(sub_maker, "subs") or not sub_maker.subs:
-            print("No subtitles to generate: sub_maker is None or sub_maker.subs is empty")
+        if not sub_maker or not hasattr(sub_maker, "cues") or not sub_maker.cues:
+            print("No subtitles to generate: sub_maker is None or sub_maker.cues is empty")
             return
 
-        print(f"Generating subtitles with {len(sub_maker.subs)} items")
+        print(f"Generating subtitles with {len(sub_maker.cues)} items")
         
         # 直接使用创建字幕的函数
         await create_subtitle(sub_maker=sub_maker, text=text, subtitle_file=subtitle_file)
@@ -1166,11 +1180,10 @@ async def generate_subtitle(sub_maker: edge_tts.SubMaker, text: str, subtitle_fi
 
 def get_audio_duration(sub_maker: edge_tts.SubMaker) -> float:
     """获取音频时长（秒）"""
-    if not sub_maker or not hasattr(sub_maker, "subs") or not sub_maker.subs:
+    if not sub_maker or not hasattr(sub_maker, "cues") or not sub_maker.cues:
         return 0
-    last_sub = sub_maker.subs[-1]
-    start, duration = last_sub[0]
-    return (start + duration) / 10000000  # 转换为秒
+    last_cue = sub_maker.cues[-1]
+    return last_cue.end.total_seconds()
 
 
 def _format_text(text: str) -> str:
@@ -1235,12 +1248,13 @@ async def create_subtitle(sub_maker: edge_tts.SubMaker, text: str, subtitle_file
     sub_line = ""
 
     try:
-        for _, (offset, sub) in enumerate(zip(sub_maker.offset, sub_maker.subs)):
-            _start_time, end_time = offset
+        for cue in sub_maker.cues:
+            _start_time = cue.start.total_seconds()
+            end_time = cue.end.total_seconds()
             if start_time < 0:
                 start_time = _start_time
 
-            sub = unescape(sub)
+            sub = unescape(cue.content)
             sub_line += sub
             sub_text = match_line(sub_line, sub_index)
             if sub_text:
@@ -1267,9 +1281,18 @@ async def create_subtitle(sub_maker: edge_tts.SubMaker, text: str, subtitle_file
                 logger.error(f"failed, error: {str(e)}")
                 os.remove(subtitle_file)
         else:
-            logger.error(
-                f"failed, sub_items len: {len(sub_items)}, script_lines len: {len(script_lines)}"
+            logger.warning(
+                f"Custom subtitle matching failed (sub_items: {len(sub_items)}, script_lines: {len(script_lines)}), "
+                f"falling back to edge-tts built-in SRT"
             )
+            # 回退到 edge-tts 自带的 SRT 生成
+            srt_content = sub_maker.get_srt()
+            if srt_content and srt_content.strip():
+                with open(subtitle_file, "w", encoding="utf-8") as file:
+                    file.write(srt_content)
+                logger.info(f"Fallback subtitle file created: {subtitle_file}")
+            else:
+                logger.error("Fallback SRT content is empty")
 
     except Exception as e:
         logger.error(f"failed, error: {str(e)}")

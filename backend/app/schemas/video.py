@@ -305,6 +305,7 @@ class VideoGenerateRequest(BaseModel):
     segments: int = Field(default=3, ge=1, le=10, description="分段数量")
     language: Language = Field(default=Language.CHINESE_CN, description="故事语言")
     story_prompt: Optional[str] = Field(default=None, description="故事提示词")
+    story_scenes: Optional[List[StoryScene]] = Field(default=None, description="用户提供的故事场景列表，提供后跳过LLM故事生成")
     image_style: ImageStyle = Field(default=ImageStyle.realistic, description="图片风格")
     voice_name: str = Field(default="zh-CN-XiaoxiaoNeural", description="语音名称")
     voice_rate: float = Field(default=1.0, description="语音速率")

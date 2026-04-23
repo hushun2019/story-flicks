@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
+from loguru import logger
 from app.schemas.voice import VoiceGenerationRequest, VoiceGenerationResponse
 from app.schemas.video import VideoGenerateResponse, StoryScene
 from app.services.voice import generate_voice, get_all_azure_voices

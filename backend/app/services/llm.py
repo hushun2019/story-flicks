@@ -108,19 +108,51 @@ class LLMService:
         try:
             # 添加安全提示词
             safe_prompt = f"Create a safe, family-friendly illustration. {prompt} The image should be appropriate for all ages, non-violent, and non-controversial."
+            logger.info(f"Generating image: provider={image_llm_provider}, model={image_llm_model}, resolution={resolution}")
             
             if image_llm_provider == "aliyun":
-                rsp = ImageSynthesis.call(model=image_llm_model,
-                              prompt=prompt,
-                              size=resolution,)
-                if rsp.status_code == HTTPStatus.OK:
-                    # print("aliyun image response", rsp.output)
-                    for result in rsp.output.results:
-                        return result.url
+                # qwen-image 系列通过 MultiModalConversation 接口调用
+                if image_llm_model and image_llm_model.startswith("qwen-image"):
+                    from dashscope import MultiModalConversation
+                    messages = [{"role": "user", "content": [{"text": prompt}]}]
+                    response = MultiModalConversation.call(
+                        api_key=settings.aliyun_api_key,
+                        model=image_llm_model,
+                        messages=messages,
+                        result_format='message',
+                        stream=False,
+                        watermark=False,
+                        prompt_extend=True,
+                        size=resolution or '1024*1024',
+                    )
+                    if response.status_code == HTTPStatus.OK:
+                        choices = response.output.get("choices", [])
+                        if choices:
+                            content = choices[0].get("message", {}).get("content", [])
+                            for item in content:
+                                if "image" in item:
+                                    return item["image"]
+                        raise Exception(f"qwen-image returned no image url, response: {response}")
+                    else:
+                        error_message = f'Failed, status_code: {response.status_code}, code: {response.code}, message: {response.message}'
+                        logger.error(error_message)
+                        raise Exception(error_message)
                 else:
-                    error_message = f'Failed, status_code: {rsp.status_code}, code: {rsp.code}, message: {rsp.message}'
-                    logger.error(error_message)
-                    raise Exception(error_message)
+                    # wanx/flux 系列通过 ImageSynthesis API 调用
+                    ALIYUN_IMAGESYNTHESIS_MODELS = ["wanx-v1", "wanx2.0-t2i-turbo", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus", "flux-merged", "flux-dev", "flux-schnell"]
+                    if image_llm_model not in ALIYUN_IMAGESYNTHESIS_MODELS:
+                        logger.warning(f"Model '{image_llm_model}' is not supported by aliyun ImageSynthesis, falling back to 'wanx2.1-t2i-turbo'")
+                        image_llm_model = "wanx2.1-t2i-turbo"
+                    rsp = ImageSynthesis.call(model=image_llm_model,
+                                  prompt=prompt,
+                                  size=resolution,)
+                    if rsp.status_code == HTTPStatus.OK:
+                        for result in rsp.output.results:
+                            return result.url
+                    else:
+                        error_message = f'Failed, status_code: {rsp.status_code}, code: {rsp.code}, message: {rsp.message}'
+                        logger.error(error_message)
+                        raise Exception(error_message)
             elif image_llm_provider == "openai":
                 if (resolution != None):
                     resolution = resolution.replace("*", "x")
@@ -184,7 +216,7 @@ class LLMService:
 
         return story_segments
     
-    def get_llm_providers(self) -> Dict[str, List[str]]:
+    def get_llm_providers(self) -> Dict[str, Any]:
         imgLLMList = []
         textLLMList = []
         if settings.openai_api_key:
@@ -200,7 +232,15 @@ class LLMService:
         if settings.siliconflow_api_key:
             textLLMList.append("siliconflow")
             imgLLMList.append("siliconflow")
-        return { "textLLMProviders": textLLMList, "imageLLMProviders": imgLLMList }
+        return {
+            "textLLMProviders": textLLMList,
+            "imageLLMProviders": imgLLMList,
+            "defaults": {
+                "text_llm_model": settings.text_llm_model,
+                "image_llm_model": settings.image_llm_model,
+                "resolution": "1024*1024",
+            },
+        }
 
     def _validate_story_response(self, response: any) -> None:
         """验证故事生成响应
@@ -244,7 +284,7 @@ class LLMService:
             Exception: 请求失败或解析失败时抛出异常
         """
         if text_llm_provider == None:
-            text_llm_provider = settings.text_llm_provider
+            text_llm_provider = settings.text_provider
         if text_llm_provider == "aliyun":
             text_client = self.aliyun_text_client
         elif text_llm_provider == "openai":

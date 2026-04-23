@@ -15,6 +15,14 @@ export async function getLLMProviders(): Promise<LLMProvidersRes> {
     });
 }
 
+export async function generateStory(data: StoryGenerationReq): Promise<StoryGenerationRes> {
+    return request<StoryGenerationRes>({
+        url: "/api/llm/story",
+        method: "post",
+        data,
+    });
+}
+
 export async function generateVideo(data: VideoGenerateReq): Promise<VideoGenerateRes> {
     return request<VideoGenerateRes>({
         url: "/api/video/generate",

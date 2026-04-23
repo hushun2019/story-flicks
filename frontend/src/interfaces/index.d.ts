@@ -13,6 +13,27 @@ interface LLMProvidersRes {
     };
 }
 
+interface StorySegment {
+    text: string;
+    image_prompt: string;
+    url?: string;
+}
+
+interface StoryGenerationReq {
+    story_prompt: string;
+    segments: number;
+    language: Language;
+    text_llm_provider?: string;
+    text_llm_model?: string;
+    image_llm_provider?: string;
+    image_llm_model?: string;
+    resolution?: string;
+}
+
+interface StoryGenerationRes {
+    segments: StorySegment[];
+}
+
 interface VideoGenerateReq {
     text_llm_provider?: string; // Text LLM provider
     image_llm_provider?: string; // Image LLM provider
@@ -22,10 +43,12 @@ interface VideoGenerateReq {
     task_id?: string; // 任务ID，测试模式才需要
     segments: number; // 分段数量 (1-10)
     language?: Language; // 故事语言
-    story_prompt?: string; // 故事提示词，测试模式不需要，非测试模式必填
-    image_style?: string; // 图片风格，测试模式不需要，非测试模式必填
+    story_prompt?: string; // 故事提示词
+    story_scenes?: StorySegment[]; // 用户提供的故事场景
+    image_style?: string; // 图片风格
     voice_name: string; // 语音名称，需要和语言匹配
     voice_rate: number; // 语音速率，默认写1
+    resolution?: string;
 }
 
 // 假设 Language 和 ImageStyle 是其他接口或枚举

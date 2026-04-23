@@ -72,7 +72,7 @@ site/
 .ipynb_checkpoints
 *.ipynb
 
-backend/tasks/*
+backend/tasks/
 tests/
 **/tests/
 
