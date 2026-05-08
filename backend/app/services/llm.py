@@ -8,6 +8,7 @@ from pathlib import PurePosixPath
 import requests
 from urllib.parse import urlparse, unquote
 import random
+import time
 
 from app.models.const import LANGUAGE_NAMES, Language
 from app.exceptions import LLMResponseValidationError
@@ -89,13 +90,14 @@ class LLMService:
         else:
             raise TypeError("Input must be a dict or list of dicts")
 
-    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1080x1620") -> str:
+    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1080x1620", max_retries: int = 3) -> str:
         # return "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/1d/56/20250118/3c4cc727/4fc622b5-54a6-484c-bf1f-f1cfb66ace2d-1.png?Expires=1737290655&OSSAccessKeyId=LTAI5tQZd8AEcZX6KZV4G8qL&Signature=W8D4CN3uonQ2pL1e9xGMWufz33E%3D"
         """生成图片
 
         Args:
             prompt (str): 图片描述
-            resolution (str): 图片分辨率，默认为 1024x1024
+            resolution (str): 图片分辨率，默认为 1080x1620
+            max_retries (int): 遇到限流时的最大重试次数
 
         Returns:
             str: 图片URL
@@ -105,90 +107,110 @@ class LLMService:
         image_llm_provider =  image_llm_provider or settings.image_provider
         image_llm_model = image_llm_model or settings.image_llm_model
 
-        try:
-            # 添加安全提示词
-            safe_prompt = f"Create a safe, family-friendly illustration. {prompt} The image should be appropriate for all ages, non-violent, and non-controversial."
-            logger.info(f"Generating image: provider={image_llm_provider}, model={image_llm_model}, resolution={resolution}")
-            
-            if image_llm_provider == "aliyun":
-                # qwen-image 系列通过 MultiModalConversation 接口调用
-                if image_llm_model and image_llm_model.startswith("qwen-image"):
-                    from dashscope import MultiModalConversation
-                    messages = [{"role": "user", "content": [{"text": prompt}]}]
-                    response = MultiModalConversation.call(
-                        api_key=settings.aliyun_api_key,
+        for attempt in range(max_retries + 1):
+            try:
+                # 添加安全提示词
+                safe_prompt = f"Create a safe, family-friendly illustration. {prompt} The image should be appropriate for all ages, non-violent, and non-controversial."
+                logger.info(f"Generating image (attempt {attempt + 1}/{max_retries + 1}): provider={image_llm_provider}, model={image_llm_model}, resolution={resolution}")
+                
+                if image_llm_provider == "aliyun":
+                    # qwen-image 系列通过 MultiModalConversation 接口调用
+                    if image_llm_model and image_llm_model.startswith("qwen-image"):
+                        from dashscope import MultiModalConversation
+                        messages = [{"role": "user", "content": [{"text": prompt}]}]
+                        response = MultiModalConversation.call(
+                            api_key=settings.aliyun_api_key,
+                            model=image_llm_model,
+                            messages=messages,
+                            result_format='message',
+                            stream=False,
+                            watermark=False,
+                            prompt_extend=True,
+                            size=resolution or '1080*1620',
+                        )
+                        if response.status_code == HTTPStatus.OK:
+                            choices = response.output.get("choices", [])
+                            if choices:
+                                content = choices[0].get("message", {}).get("content", [])
+                                for item in content:
+                                    if "image" in item:
+                                        return item["image"]
+                            raise Exception(f"qwen-image returned no image url, response: {response}")
+                        elif response.status_code == 429:
+                            # 限流，等待后重试
+                            wait_time = (attempt + 1) * 5  # 5s, 10s, 15s 递增等待
+                            logger.warning(f"Rate limited (429), waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            error_message = f'Failed, status_code: {response.status_code}, code: {response.code}, message: {response.message}'
+                            logger.error(error_message)
+                            raise Exception(error_message)
+                    else:
+                        # wanx/flux 系列通过 ImageSynthesis API 调用
+                        ALIYUN_IMAGESYNTHESIS_MODELS = ["wanx-v1", "wanx2.0-t2i-turbo", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus", "flux-merged", "flux-dev", "flux-schnell"]
+                        if image_llm_model not in ALIYUN_IMAGESYNTHESIS_MODELS:
+                            logger.warning(f"Model '{image_llm_model}' is not supported by aliyun ImageSynthesis, falling back to 'wanx2.1-t2i-turbo'")
+                            image_llm_model = "wanx2.1-t2i-turbo"
+                        rsp = ImageSynthesis.call(model=image_llm_model,
+                                      prompt=prompt,
+                                      size=resolution,)
+                        if rsp.status_code == HTTPStatus.OK:
+                            for result in rsp.output.results:
+                                return result.url
+                        elif rsp.status_code == 429:
+                            wait_time = (attempt + 1) * 5
+                            logger.warning(f"Rate limited (429), waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            error_message = f'Failed, status_code: {rsp.status_code}, code: {rsp.code}, message: {rsp.message}'
+                            logger.error(error_message)
+                            raise Exception(error_message)
+                elif image_llm_provider == "openai":
+                    if (resolution != None):
+                        resolution = resolution.replace("*", "x")
+                    response = self.openai_client.images.generate(
                         model=image_llm_model,
-                        messages=messages,
-                        result_format='message',
-                        stream=False,
-                        watermark=False,
-                        prompt_extend=True,
-                        size=resolution or '1080*1620',
+                        prompt=safe_prompt,
+                        size=resolution,
+                        quality="standard",
+                        n=1
                     )
-                    if response.status_code == HTTPStatus.OK:
-                        choices = response.output.get("choices", [])
-                        if choices:
-                            content = choices[0].get("message", {}).get("content", [])
-                            for item in content:
-                                if "image" in item:
-                                    return item["image"]
-                        raise Exception(f"qwen-image returned no image url, response: {response}")
+                    logger.info("image generate res", response.data[0].url)
+                    return response.data[0].url
+                elif image_llm_provider == "siliconflow":
+                    if (resolution != None):
+                        resolution = resolution.replace("*", "x")
+                    payload = {
+                        "model": image_llm_model,
+                        "prompt": safe_prompt,
+                        "seed": random.randint(1000000, 4999999999),
+                        "image_size": resolution,
+                        "guidance_scale": 7.5,
+                        "batch_size": 1,
+                    }
+                    headers = {
+                        "Authorization": "Bearer " + settings.siliconflow_api_key,
+                        "Content-Type": "application/json"
+                    }
+                    response = requests.request("POST", "https://api.siliconflow.cn/v1/images/generations", json=payload, headers=headers)
+                    if response.text != None:
+                        response = json.loads(response.text)
+                        return response["images"][0]["url"]
                     else:
-                        error_message = f'Failed, status_code: {response.status_code}, code: {response.code}, message: {response.message}'
-                        logger.error(error_message)
-                        raise Exception(error_message)
-                else:
-                    # wanx/flux 系列通过 ImageSynthesis API 调用
-                    ALIYUN_IMAGESYNTHESIS_MODELS = ["wanx-v1", "wanx2.0-t2i-turbo", "wanx2.1-t2i-turbo", "wanx2.1-t2i-plus", "flux-merged", "flux-dev", "flux-schnell"]
-                    if image_llm_model not in ALIYUN_IMAGESYNTHESIS_MODELS:
-                        logger.warning(f"Model '{image_llm_model}' is not supported by aliyun ImageSynthesis, falling back to 'wanx2.1-t2i-turbo'")
-                        image_llm_model = "wanx2.1-t2i-turbo"
-                    rsp = ImageSynthesis.call(model=image_llm_model,
-                                  prompt=prompt,
-                                  size=resolution,)
-                    if rsp.status_code == HTTPStatus.OK:
-                        for result in rsp.output.results:
-                            return result.url
-                    else:
-                        error_message = f'Failed, status_code: {rsp.status_code}, code: {rsp.code}, message: {rsp.message}'
-                        logger.error(error_message)
-                        raise Exception(error_message)
-            elif image_llm_provider == "openai":
-                if (resolution != None):
-                    resolution = resolution.replace("*", "x")
-                response = self.openai_client.images.generate(
-                    model=image_llm_model,
-                    prompt=safe_prompt,
-                    size=resolution,
-                    quality="standard",
-                    n=1
-                )
-                logger.info("image generate res", response.data[0].url)
-                return response.data[0].url
-            elif image_llm_provider == "siliconflow":
-                if (resolution != None):
-                    resolution = resolution.replace("*", "x")
-                payload = {
-                    "model": image_llm_model,
-                    "prompt": safe_prompt,
-                    "seed": random.randint(1000000, 4999999999),
-                    "image_size": resolution,
-                    "guidance_scale": 7.5,
-                    "batch_size": 1,
-                }
-                headers = {
-                    "Authorization": "Bearer " + settings.siliconflow_api_key,
-                    "Content-Type": "application/json"
-                }
-                response = requests.request("POST", "https://api.siliconflow.cn/v1/images/generations", json=payload, headers=headers)
-                if response.text != None:
-                    response = json.loads(response.text)
-                    return response["images"][0]["url"]
-                else:
-                    raise Exception(response.text)
-        except Exception as e:
-            logger.error(f"Failed to generate image: {e}")
-            return ""
+                        raise Exception(response.text)
+            except Exception as e:
+                if attempt < max_retries and "429" in str(e):
+                    wait_time = (attempt + 1) * 5
+                    logger.warning(f"Rate limited, waiting {wait_time}s before retry (attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(wait_time)
+                    continue
+                logger.error(f"Failed to generate image: {e}")
+                return ""
+        
+        logger.error(f"Failed to generate image after {max_retries + 1} attempts due to rate limiting")
+        return ""
 
     async def generate_story_with_images(self, request: StoryGenerationRequest) -> List[Dict[str, Any]]:
         """生成故事和配图
@@ -206,8 +228,11 @@ class LLMService:
         )
 
         # 为每个场景生成图片
-        for segment in story_segments:
+        for i, segment in enumerate(story_segments):
             try:
+                # 每次生成图片前等待2秒，避免触发限流
+                if i > 0:
+                    time.sleep(2)
                 image_url = self.generate_image(prompt=segment["image_prompt"], resolution=request.resolution, image_llm_provider=request.image_llm_provider, image_llm_model=request.image_llm_model)
                 segment["url"] = image_url
             except Exception as e:

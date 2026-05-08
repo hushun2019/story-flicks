@@ -283,8 +283,21 @@ async def generate_video(request: VideoGenerateRequest):
                             with open(image_path, "wb") as f:
                                 f.write(response.content)
                             logger.info(f"Downloaded image {i} to {image_path}")
+                        else:
+                            logger.error(f"Failed to download image {i}: HTTP {response.status_code}")
                     except Exception as e:
                         logger.error(f"Failed to download image {i}: {e}")
+                else:
+                    logger.error(f"Scene {i} has no image URL, image generation may have failed")
+
+            # 校验所有图片是否下载成功
+            missing_images = []
+            for i in range(1, len(story_list) + 1):
+                image_path = os.path.join(task_dir, f"{i}.png")
+                if not os.path.exists(image_path):
+                    missing_images.append(i)
+            if missing_images:
+                raise ValueError(f"Image files missing for scenes: {missing_images}. Please check image generation logs.")
 
             with open(story_file, "w", encoding="utf-8") as f:
                 json.dump(story_data, f, ensure_ascii=False, indent=2)
