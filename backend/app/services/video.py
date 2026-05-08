@@ -183,6 +183,7 @@ async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voic
                     for item in sub.subtitles:
                         clip = create_text_clip(subtitle_item=item)
                         text_clips.append(clip)
+
                     video_clip = CompositeVideoClip([image_clip, *text_clips], (origin_image_w, origin_image_h))
                     clips.append(video_clip)
                     logger.info(f"Added subtitles for scene {i}")

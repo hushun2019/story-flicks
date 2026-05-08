@@ -309,7 +309,7 @@ class VideoGenerateRequest(BaseModel):
     image_style: ImageStyle = Field(default=ImageStyle.realistic, description="图片风格")
     voice_name: str = Field(default="zh-CN-XiaoxiaoNeural", description="语音名称")
     voice_rate: float = Field(default=1.0, description="语音速率")
-    resolution: Optional[str] = Field(default="1024*1024", description="分辨率")
+    resolution: Optional[str] = Field(default="1080*1620", description="分辨率")
 
 
 class VideoGenerateResponse(BaseModel):

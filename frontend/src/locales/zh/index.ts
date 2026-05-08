@@ -35,7 +35,7 @@ export default {
         segmentsMissMsg: '请输入故事分段数量, 1-10',
         textLLMPlaceholder: 'gpt-4o 或 qwen-plus 或其他',
         imageLLMPlaceholder: 'wanx2.1-t2i-turbo 或 dall-e-3 或其他',
-        resolutionPlaceholder: '1024*1024',
+        resolutionPlaceholder: '1080*1620',
         storyPromptPlaceholder: '讲一个小白兔和大灰狼的故事。',
     },
 }

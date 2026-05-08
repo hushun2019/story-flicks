@@ -89,7 +89,7 @@ class LLMService:
         else:
             raise TypeError("Input must be a dict or list of dicts")
 
-    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1024x1024") -> str:
+    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1080x1620") -> str:
         # return "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/1d/56/20250118/3c4cc727/4fc622b5-54a6-484c-bf1f-f1cfb66ace2d-1.png?Expires=1737290655&OSSAccessKeyId=LTAI5tQZd8AEcZX6KZV4G8qL&Signature=W8D4CN3uonQ2pL1e9xGMWufz33E%3D"
         """生成图片
 
@@ -123,7 +123,7 @@ class LLMService:
                         stream=False,
                         watermark=False,
                         prompt_extend=True,
-                        size=resolution or '1024*1024',
+                        size=resolution or '1080*1620',
                     )
                     if response.status_code == HTTPStatus.OK:
                         choices = response.output.get("choices", [])
@@ -238,7 +238,7 @@ class LLMService:
             "defaults": {
                 "text_llm_model": settings.text_llm_model,
                 "image_llm_model": settings.image_llm_model,
-                "resolution": "1024*1024",
+                "resolution": "1080*1620",
             },
         }
 

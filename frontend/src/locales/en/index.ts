@@ -35,7 +35,7 @@ export default {
         segmentsMissMsg: 'Please input Story Segments, 1-10',
         textLLMPlaceholder: 'gpt-4o or qwen-plus or others',
         imageLLMPlaceholder: 'wanx2.1-t2i-turbo or dall-e-3 or others',
-        resolutionPlaceholder: '1024*1024',
+        resolutionPlaceholder: '1080*1620',
         storyPromptPlaceholder: 'Tell a story about a little white rabbit and a big gray wolf.',
     },
 }

@@ -51,7 +51,7 @@ const App: React.FC = () => {
     const [form] = Form.useForm();
     const [allVoiceList, setAllVoiceList] = useState<string[]>([]);
     const [nowVoiceList, setNowVoiceList] = useState<string[]>([]);
-    const [llmProviders, setLLMProviders] = useState<LLMProvidersRes>({ textLLMProviders: [], imageLLMProviders: [], defaults: { text_llm_model: '', image_llm_model: '', resolution: '1024*1024' } });
+    const [llmProviders, setLLMProviders] = useState<LLMProvidersRes>({ textLLMProviders: [], imageLLMProviders: [], defaults: { text_llm_model: '', image_llm_model: '', resolution: '1080*1620' } });
     const [generatingText, setGeneratingText] = useState(false);
     const DEFAULT_LANGUAGE = 'zh-CN';
 
@@ -78,7 +78,7 @@ const App: React.FC = () => {
             image_llm_provider: llmProviders.imageLLMProviders?.[0],
             text_llm_model: llmProviders.defaults?.text_llm_model,
             image_llm_model: llmProviders.defaults?.image_llm_model,
-            resolution: llmProviders.defaults?.resolution || '1024*1024',
+            resolution: llmProviders.defaults?.resolution || '1080*1620',
             language: DEFAULT_LANGUAGE,
             segments: 3,
         });
