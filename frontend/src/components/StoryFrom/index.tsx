@@ -249,6 +249,21 @@ const App: React.FC = () => {
                     </Select>
                 </Form.Item>
                 <Form.Item<FieldType>
+                    label={t('storyForm.voiceRate')}
+                    name="voice_rate"
+                    initialValue={0.9}
+                >
+                    <Select>
+                        <Select.Option value={0.6}>0.6x 极慢</Select.Option>
+                        <Select.Option value={0.8}>0.8x 慢速</Select.Option>
+                        <Select.Option value={0.9}>0.9x 较慢</Select.Option>
+                        <Select.Option value={1.0}>1.0x 正常</Select.Option>
+                        <Select.Option value={1.1}>1.1x 较快</Select.Option>
+                        <Select.Option value={1.2}>1.2x 快速</Select.Option>
+                        <Select.Option value={1.5}>1.5x 极快</Select.Option>
+                    </Select>
+                </Form.Item>
+                <Form.Item<FieldType>
                     label={t('storyForm.textPrompt')}
                     name="story_prompt"
                     rules={[{ required: true, message: t('storyForm.textPromptMissMsg') }]}

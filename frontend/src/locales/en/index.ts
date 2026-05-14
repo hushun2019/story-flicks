@@ -16,6 +16,7 @@ export default {
         resolution: 'Image Resolution', 
         videoLanguage: 'Video Language',
         voiceName: 'Voice Name',
+        voiceRate: 'Voice Speed',
         textPrompt: 'Story Topic',
         segments: 'Story Segments, 1-10',
         submit: 'Generate Video',

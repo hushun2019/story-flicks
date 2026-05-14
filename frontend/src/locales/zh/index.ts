@@ -16,6 +16,7 @@ export default {
         resolution: '图像分辨率',
         videoLanguage: '视频语言',
         voiceName: '语音名称',
+        voiceRate: '语音语速',
         textPrompt: '故事主题',
         segments: '故事分段，1-10',
         submit: '生成视频',
