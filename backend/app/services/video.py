@@ -82,6 +82,41 @@ def wrap_text(text, max_width, font="Arial", fontsize=60):
     # logger.warning(f"wrapped text: {result}")
     return result, height
 
+def resize_image_to_target(image_path: str, target_w: int = 1080, target_h: int = 1620):
+    """将图片缩放裁剪到目标尺寸，保持比例居中裁剪，避免黑边
+    
+    Args:
+        image_path: 图片文件路径
+        target_w: 目标宽度
+        target_h: 目标高度
+    """
+    img = Image.open(image_path)
+    img_w, img_h = img.size
+    
+    # 如果已经是目标尺寸，直接返回
+    if img_w == target_w and img_h == target_h:
+        return
+    
+    # 计算缩放比例，取较大值确保覆盖目标区域
+    scale = max(target_w / img_w, target_h / img_h)
+    new_w = int(img_w * scale)
+    new_h = int(img_h * scale)
+    
+    # 缩放
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+    
+    # 居中裁剪
+    left = (new_w - target_w) // 2
+    top = (new_h - target_h) // 2
+    img = img.crop((left, top, left + target_w, top + target_h))
+    
+    # 保存（转为RGB避免RGBA问题）
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+    img.save(image_path)
+    logger.info(f"Resized image to {target_w}x{target_h}: {image_path}")
+
+
 async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voice_name: str, voice_rate: float, test_mode: bool = False) -> str:
     """创建带有场景的视频
 
@@ -97,6 +132,10 @@ async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voic
         try:
             # 获取文件路径
             image_file = os.path.join(task_dir, f"{i}.png")
+            
+            # 统一缩放图片到目标尺寸，避免黑边
+            if os.path.exists(image_file):
+                resize_image_to_target(image_file, 1080, 1620)
             audio_file = os.path.join(task_dir, f"{i}.mp3")
             subtitle_file = os.path.join(task_dir, f"{i}.srt")
 
@@ -246,7 +285,8 @@ async def generate_video(request: VideoGenerateRequest):
                                 prompt=scene.image_prompt,
                                 resolution=request.resolution,
                                 image_llm_provider=request.image_llm_provider,
-                                image_llm_model=request.image_llm_model
+                                image_llm_model=request.image_llm_model,
+                                global_image_prompt=request.global_image_prompt,
                             )
                             scene.url = image_url
                         except Exception as e:
@@ -262,7 +302,8 @@ async def generate_video(request: VideoGenerateRequest):
                     text_llm_provider=request.text_llm_provider,
                     text_llm_model=request.text_llm_model,
                     image_llm_provider=request.image_llm_provider,
-                    image_llm_model=request.image_llm_model
+                    image_llm_model=request.image_llm_model,
+                    global_image_prompt=request.global_image_prompt,
                 )
                 story_list = await llm_service.generate_story_with_images(request=req)
                 scenes = [StoryScene(text=scene["text"], image_prompt=scene["image_prompt"], url=scene["url"]) for scene in story_list]
@@ -278,13 +319,27 @@ async def generate_video(request: VideoGenerateRequest):
                 if scene.get("url"):
                     image_path = os.path.join(task_dir, f"{i}.png")
                     try:
-                        response = requests.get(scene["url"])
-                        if response.status_code == 200:
-                            with open(image_path, "wb") as f:
-                                f.write(response.content)
-                            logger.info(f"Downloaded image {i} to {image_path}")
+                        image_url = scene["url"]
+                        # 本地上传的图片直接复制文件，避免自请求死锁
+                        if "/tasks/uploads/" in image_url:
+                            # 从URL中提取相对路径，直接从磁盘复制
+                            import shutil
+                            # URL格式: http://127.0.0.1:8000/tasks/uploads/{upload_id}/{filename}
+                            url_path = image_url.split("/tasks/")[1]  # uploads/{upload_id}/{filename}
+                            source_path = os.path.join(utils.task_dir(), url_path)
+                            if os.path.exists(source_path):
+                                shutil.copy2(source_path, image_path)
+                                logger.info(f"Copied local image {i} to {image_path}")
+                            else:
+                                logger.error(f"Local image not found: {source_path}")
                         else:
-                            logger.error(f"Failed to download image {i}: HTTP {response.status_code}")
+                            response = requests.get(image_url, timeout=30)
+                            if response.status_code == 200:
+                                with open(image_path, "wb") as f:
+                                    f.write(response.content)
+                                logger.info(f"Downloaded image {i} to {image_path}")
+                            else:
+                                logger.error(f"Failed to download image {i}: HTTP {response.status_code}")
                     except Exception as e:
                         logger.error(f"Failed to download image {i}: {e}")
                 else:

@@ -28,6 +28,7 @@ interface StoryGenerationReq {
     image_llm_provider?: string;
     image_llm_model?: string;
     resolution?: string;
+    global_image_prompt?: string;
 }
 
 interface StoryGenerationRes {
@@ -35,29 +36,37 @@ interface StoryGenerationRes {
 }
 
 interface VideoGenerateReq {
-    text_llm_provider?: string; // Text LLM provider
-    image_llm_provider?: string; // Image LLM provider
-    text_llm_model?: string; // Text LLM model
-    image_llm_model?: string; // Image LLM model
-    test_mode?: boolean; // 是否为测试模式
-    task_id?: string; // 任务ID，测试模式才需要
-    segments: number; // 分段数量 (1-10)
-    language?: Language; // 故事语言
-    story_prompt?: string; // 故事提示词
-    story_scenes?: StorySegment[]; // 用户提供的故事场景
-    image_style?: string; // 图片风格
-    voice_name: string; // 语音名称，需要和语言匹配
-    voice_rate: number; // 语音速率，默认写1
+    text_llm_provider?: string;
+    image_llm_provider?: string;
+    text_llm_model?: string;
+    image_llm_model?: string;
+    test_mode?: boolean;
+    task_id?: string;
+    segments: number;
+    language?: Language;
+    story_prompt?: string;
+    story_scenes?: StorySegment[];
+    image_style?: string;
+    voice_name: string;
+    voice_rate: number;
     resolution?: string;
+    global_image_prompt?: string;
 }
 
-// 假设 Language 和 ImageStyle 是其他接口或枚举
 type Language = "zh-CN" | "zh-TW" |  "en-US" | "ja-JP" | "ko-KR";
 
 interface VideoGenerateRes {
     success: boolean;
     data?: {
-        video_url: string; // 视频 URL
+        video_url: string;
     };
     message: string | null;
+}
+
+interface ImageUploadRes {
+    success: boolean;
+    data?: {
+        urls: string[];
+        upload_id: string;
+    };
 }

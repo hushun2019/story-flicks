@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import type { FormProps } from 'antd';
-import { Button, Form, Input, Select, message, Space } from 'antd';
+import { Button, Form, Input, Select, message, Space, Radio, Upload, Image } from 'antd';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next'
-import { getVoiceList, getLLMProviders, generateVideo, generateStory } from '../../services/index';
+import { getVoiceList, getLLMProviders, generateVideo, generateStory, uploadImages } from '../../services/index';
 import { VOICE_LANGUAGES, VOICE_LANGUAGES_LABELS } from '../../constants';
 import { getSelectVoiceList } from '../../utils/index';
 import styles from './index.module.css'
 import { useVideoStore } from "../../stores/index";
+import type { UploadFile } from 'antd';
+
+type ImageMode = 'ai' | 'upload';
 
 type FieldType = {
     text_llm_provider?: string;
@@ -20,6 +24,7 @@ type FieldType = {
     story_content?: string;
     voice_name: string;
     voice_rate: number;
+    global_image_prompt?: string;
 };
 
 /**
@@ -53,6 +58,11 @@ const App: React.FC = () => {
     const [nowVoiceList, setNowVoiceList] = useState<string[]>([]);
     const [llmProviders, setLLMProviders] = useState<LLMProvidersRes>({ textLLMProviders: [], imageLLMProviders: [], defaults: { text_llm_model: '', image_llm_model: '', resolution: '1080*1620' } });
     const [generatingText, setGeneratingText] = useState(false);
+    const [imageMode, setImageMode] = useState<ImageMode>('ai');
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+    const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
+    const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+    const [uploading, setUploading] = useState(false);
     const DEFAULT_LANGUAGE = 'zh-CN';
 
     useEffect(() => {
@@ -66,7 +76,10 @@ const App: React.FC = () => {
                 const defaultVoices = getSelectVoiceList(DEFAULT_LANGUAGE, res.voices);
                 setNowVoiceList(defaultVoices);
                 if (defaultVoices.length > 0) {
-                    form.setFieldsValue({ voice_name: defaultVoices[0].replace('-Female', '').replace('-Male', '') });
+                    // 默认选择 liaoning-XiaobeiNeural
+                    const liaoningVoice = defaultVoices.find(v => v.includes('liaoning'));
+                    const defaultVoice = liaoningVoice || defaultVoices[0];
+                    form.setFieldsValue({ voice_name: defaultVoice.replace('-Female', '').replace('-Male', '') });
                 }
             }
         }).catch(err => console.log(err));
@@ -84,6 +97,101 @@ const App: React.FC = () => {
         });
     }, [llmProviders]);
 
+    /** 处理图片模式切换 */
+    const handleImageModeChange = (mode: ImageMode) => {
+        setImageMode(mode);
+        if (mode === 'ai') {
+            // 切换到AI模式，清除上传的图片
+            setUploadedFiles([]);
+            setUploadedPreviews([]);
+            setUploadedUrls([]);
+        } else {
+            // 切换到上传模式，清除全局图片提示词
+            form.setFieldsValue({ global_image_prompt: '' });
+        }
+    };
+
+    /** 处理图片上传 */
+    const handleImageUpload = async (fileList: FileList | null) => {
+        if (!fileList) return;
+
+        const newFiles: File[] = [];
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+        const maxSize = 10 * 1024 * 1024; // 10MB
+
+        for (let i = 0; i < fileList.length; i++) {
+            const file = fileList[i];
+            if (!allowedTypes.includes(file.type)) {
+                message.error(`文件 "${file.name}" 格式不支持，仅支持 PNG、JPG、JPEG`);
+                return;
+            }
+            if (file.size > maxSize) {
+                message.error(`文件 "${file.name}" 超过10MB大小限制`);
+                return;
+            }
+            newFiles.push(file);
+        }
+
+        const totalFiles = [...uploadedFiles, ...newFiles];
+        if (totalFiles.length > 10) {
+            message.error('最多上传10张图片');
+            return;
+        }
+
+        // 生成预览
+        const newPreviews: string[] = [];
+        for (const file of newFiles) {
+            const preview = URL.createObjectURL(file);
+            newPreviews.push(preview);
+        }
+
+        setUploadedFiles(totalFiles);
+        setUploadedPreviews([...uploadedPreviews, ...newPreviews]);
+
+        // 上传到后端
+        setUploading(true);
+        try {
+            const res = await uploadImages(totalFiles);
+            if (res?.success && res.data?.urls) {
+                setUploadedUrls(res.data.urls);
+                message.success(`已上传 ${totalFiles.length} 张图片`);
+            }
+        } catch (err: any) {
+            message.error('图片上传失败: ' + (err?.response?.data?.detail || err?.message || '未知错误'));
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    /** 删除单张图片 */
+    const handleRemoveImage = async (index: number) => {
+        const newFiles = uploadedFiles.filter((_, i) => i !== index);
+        const newPreviews = uploadedPreviews.filter((_, i) => i !== index);
+
+        // 释放旧的预览URL
+        URL.revokeObjectURL(uploadedPreviews[index]);
+
+        setUploadedFiles(newFiles);
+        setUploadedPreviews(newPreviews);
+
+        // 重新上传剩余文件
+        if (newFiles.length > 0) {
+            setUploading(true);
+            try {
+                const res = await uploadImages(newFiles);
+                if (res?.success && res.data?.urls) {
+                    setUploadedUrls(res.data.urls);
+                }
+            } catch (err: any) {
+                message.error('图片上传失败');
+            } finally {
+                setUploading(false);
+            }
+        } else {
+            setUploadedUrls([]);
+        }
+    };
+
     /** 点击"生成文本"：调用LLM生成故事，填入故事内容框 */
     const handleGenerateText = async () => {
         try {
@@ -92,11 +200,22 @@ const App: React.FC = () => {
                 message.warning(t('storyForm.textPromptMissMsg'));
                 return;
             }
+
+            // 上传模式下，段落数 = 图片数
+            let segments = values.segments || 3;
+            if (imageMode === 'upload') {
+                if (uploadedFiles.length === 0) {
+                    message.warning('请先上传图片');
+                    return;
+                }
+                segments = uploadedFiles.length;
+            }
+
             setGeneratingText(true);
             message.loading(t('storyForm.generatingText'), 0);
             const res = await generateStory({
                 story_prompt: values.story_prompt,
-                segments: values.segments || 5,
+                segments: segments,
                 language: values.language || DEFAULT_LANGUAGE,
                 text_llm_provider: values.text_llm_provider,
                 text_llm_model: values.text_llm_model,
@@ -124,12 +243,27 @@ const App: React.FC = () => {
             return;
         }
 
+        // 上传模式校验
+        if (imageMode === 'upload') {
+            if (uploadedFiles.length === 0) {
+                message.error('请先上传图片');
+                return;
+            }
+            if (uploadedUrls.length === 0) {
+                message.error('图片尚未上传完成，请稍候');
+                return;
+            }
+            // 校验段落数 = 图片数
+            const scenes = textToScenes(storyContent);
+            if (scenes.length !== uploadedUrls.length) {
+                message.error(`故事段落数(${scenes.length})与上传图片数(${uploadedUrls.length})不一致，请调整`);
+                return;
+            }
+        }
+
         const reqData: VideoGenerateReq = {
             text_llm_provider: values.text_llm_provider,
-            image_llm_provider: values.image_llm_provider,
             text_llm_model: values.text_llm_model,
-            image_llm_model: values.image_llm_model,
-            resolution: values.resolution,
             segments: values.segments,
             language: values.language,
             story_prompt: values.story_prompt,
@@ -137,9 +271,27 @@ const App: React.FC = () => {
             voice_rate: values.voice_rate || 1,
         };
 
-        // 如果用户填了故事内容，解析为 scenes 传给后端
+        if (imageMode === 'ai') {
+            reqData.image_llm_provider = values.image_llm_provider;
+            reqData.image_llm_model = values.image_llm_model;
+            reqData.resolution = values.resolution;
+            if (values.global_image_prompt?.trim()) {
+                reqData.global_image_prompt = values.global_image_prompt.trim();
+            }
+        }
+
+        // 解析故事内容为 scenes
         if (storyContent) {
-            reqData.story_scenes = textToScenes(storyContent);
+            const scenes = textToScenes(storyContent);
+            if (imageMode === 'upload') {
+                // 上传模式：将上传的图片URL填入scenes
+                reqData.story_scenes = scenes.map((scene, i) => ({
+                    ...scene,
+                    url: uploadedUrls[i] || '',
+                }));
+            } else {
+                reqData.story_scenes = scenes;
+            }
         }
 
         message.loading('Generating Video, please wait...', 0);
@@ -186,37 +338,109 @@ const App: React.FC = () => {
                         ))}
                     </Select>
                 </Form.Item>
-                <Form.Item<FieldType>
-                    label={t('storyForm.imgLLMProvider')}
-                    name="image_llm_provider"
-                    rules={[{ required: true, message: t('storyForm.imgLLMProviderMissMsg') }]}
-                >
-                    <Select>
-                        {llmProviders.imageLLMProviders.map((provider) => (
-                            <Select.Option key={provider} value={provider}>{provider}</Select.Option>
-                        ))}
-                    </Select>
+
+                {/* 图片模式选择 */}
+                <Form.Item label="图片模式">
+                    <Radio.Group value={imageMode} onChange={(e) => handleImageModeChange(e.target.value)}>
+                        <Radio.Button value="ai">AI生成</Radio.Button>
+                        <Radio.Button value="upload">上传自定义图片</Radio.Button>
+                    </Radio.Group>
                 </Form.Item>
+
+                {/* AI生成模式的字段 */}
+                {imageMode === 'ai' && (
+                    <>
+                        <Form.Item<FieldType>
+                            label={t('storyForm.imgLLMProvider')}
+                            name="image_llm_provider"
+                            rules={[{ required: true, message: t('storyForm.imgLLMProviderMissMsg') }]}
+                        >
+                            <Select>
+                                {llmProviders.imageLLMProviders.map((provider) => (
+                                    <Select.Option key={provider} value={provider}>{provider}</Select.Option>
+                                ))}
+                            </Select>
+                        </Form.Item>
+                        <Form.Item<FieldType>
+                            label={t('storyForm.imgLLMModel')}
+                            name="image_llm_model"
+                            rules={[{ required: true, message: t('storyForm.imgLLMModelMissMsg') }]}
+                        >
+                            <Input placeholder={t('storyForm.imageLLMPlaceholder')} />
+                        </Form.Item>
+                        <Form.Item<FieldType>
+                            label={t('storyForm.resolution')}
+                            name="resolution"
+                            rules={[{ required: true, message: t('storyForm.resolutionMissMsg') }]}
+                        >
+                            <Input placeholder={t('storyForm.resolutionPlaceholder')} />
+                        </Form.Item>
+                        <Form.Item<FieldType>
+                            label="全局图片提示词"
+                            name="global_image_prompt"
+                        >
+                            <Input.TextArea
+                                rows={2}
+                                maxLength={500}
+                                showCount
+                                placeholder="可选，如：cartoon style, bright colors, cute characters"
+                            />
+                        </Form.Item>
+                    </>
+                )}
+
+                {/* 上传自定义图片模式 */}
+                {imageMode === 'upload' && (
+                    <Form.Item label={`上传图片 (${uploadedFiles.length}/10)`}>
+                        <div className={styles.uploadArea}>
+                            <div className={styles.thumbnailList}>
+                                {uploadedPreviews.map((preview, index) => (
+                                    <div key={index} className={styles.thumbnailItem}>
+                                        <Image
+                                            src={preview}
+                                            width={80}
+                                            height={80}
+                                            style={{ objectFit: 'cover', borderRadius: 4 }}
+                                            preview={true}
+                                        />
+                                        <div className={styles.thumbnailIndex}>{index + 1}</div>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            danger
+                                            icon={<DeleteOutlined />}
+                                            className={styles.deleteBtn}
+                                            onClick={() => handleRemoveImage(index)}
+                                        />
+                                    </div>
+                                ))}
+                                {uploadedFiles.length < 10 && (
+                                    <label className={styles.uploadBtn}>
+                                        <PlusOutlined style={{ fontSize: 24, color: '#999' }} />
+                                        <span style={{ fontSize: 12, color: '#999', marginTop: 4 }}>上传</span>
+                                        <input
+                                            type="file"
+                                            multiple
+                                            accept=".png,.jpg,.jpeg"
+                                            style={{ display: 'none' }}
+                                            onChange={(e) => handleImageUpload(e.target.files)}
+                                        />
+                                    </label>
+                                )}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#999', marginTop: 8 }}>
+                                支持 PNG、JPG、JPEG，单张不超过10MB，图片顺序即视频中的展示顺序
+                            </div>
+                        </div>
+                    </Form.Item>
+                )}
+
                 <Form.Item<FieldType>
                     label={t('storyForm.txtLLMModel')}
                     name="text_llm_model"
                     rules={[{ required: true, message: t('storyForm.txtLLMModelMissMsg') }]}
                 >
                     <Input placeholder={t('storyForm.textLLMPlaceholder')} />
-                </Form.Item>
-                <Form.Item<FieldType>
-                    label={t('storyForm.imgLLMModel')}
-                    name="image_llm_model"
-                    rules={[{ required: true, message: t('storyForm.imgLLMModelMissMsg') }]}
-                >
-                    <Input placeholder={t('storyForm.imageLLMPlaceholder')} />
-                </Form.Item>
-                <Form.Item<FieldType>
-                    label={t('storyForm.resolution')}
-                    name="resolution"
-                    rules={[{ required: true, message: t('storyForm.resolutionMissMsg') }]}
-                >
-                    <Input placeholder={t('storyForm.resolutionPlaceholder')} />
                 </Form.Item>
                 <Form.Item<FieldType>
                     label={t('storyForm.videoLanguage')}
@@ -271,7 +495,7 @@ const App: React.FC = () => {
                     <Input.TextArea rows={2} placeholder={t('storyForm.storyPromptPlaceholder')} />
                 </Form.Item>
 
-                {/* 故事内容编辑框 - 紧跟故事主题 */}
+                {/* 故事内容编辑框 */}
                 <Form.Item<FieldType>
                     label={t('storyForm.storyContent')}
                     name="story_content"
@@ -282,13 +506,22 @@ const App: React.FC = () => {
                     />
                 </Form.Item>
 
-                <Form.Item<FieldType>
-                    label={t('storyForm.segments')}
-                    name="segments"
-                    rules={[{ required: true, message: t('storyForm.segmentsMissMsg') }]}
-                >
-                    <Input type='number' min={1} max={10} placeholder="5" />
-                </Form.Item>
+                {/* AI模式下显示段落数，上传模式下自动等于图片数 */}
+                {imageMode === 'ai' && (
+                    <Form.Item<FieldType>
+                        label={t('storyForm.segments')}
+                        name="segments"
+                        rules={[{ required: true, message: t('storyForm.segmentsMissMsg') }]}
+                    >
+                        <Input type='number' min={1} max={10} placeholder="3" />
+                    </Form.Item>
+                )}
+
+                {imageMode === 'upload' && (
+                    <Form.Item label={t('storyForm.segments')}>
+                        <Input disabled value={uploadedFiles.length || 0} addonAfter="（自动等于图片数）" />
+                    </Form.Item>
+                )}
 
                 {/* 生成故事 + 生成视频 同一行 */}
                 <Form.Item wrapperCol={{ offset: 8, span: 16 }}>
@@ -296,7 +529,7 @@ const App: React.FC = () => {
                         <Button type="primary" onClick={handleGenerateText} loading={generatingText}>
                             {t('storyForm.generateStory')}
                         </Button>
-                        <Button type="primary" htmlType="submit">
+                        <Button type="primary" htmlType="submit" loading={uploading}>
                             {t('storyForm.submit')}
                         </Button>
                     </Space>

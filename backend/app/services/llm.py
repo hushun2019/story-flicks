@@ -90,7 +90,7 @@ class LLMService:
         else:
             raise TypeError("Input must be a dict or list of dicts")
 
-    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1080x1620", max_retries: int = 3) -> str:
+    def generate_image(self, *, prompt: str, image_llm_provider: str = None, image_llm_model: str = None, resolution: str = "1080x1620", max_retries: int = 3, global_image_prompt: str = None) -> str:
         # return "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/1d/56/20250118/3c4cc727/4fc622b5-54a6-484c-bf1f-f1cfb66ace2d-1.png?Expires=1737290655&OSSAccessKeyId=LTAI5tQZd8AEcZX6KZV4G8qL&Signature=W8D4CN3uonQ2pL1e9xGMWufz33E%3D"
         """生成图片
 
@@ -98,10 +98,14 @@ class LLMService:
             prompt (str): 图片描述
             resolution (str): 图片分辨率，默认为 1080x1620
             max_retries (int): 遇到限流时的最大重试次数
+            global_image_prompt (str): 全局图片提示词，拼接到prompt后面
 
         Returns:
             str: 图片URL
         """
+        # 拼接全局图片提示词
+        if global_image_prompt and global_image_prompt.strip():
+            prompt = f"{prompt}, {global_image_prompt.strip()}"
 
         
         image_llm_provider =  image_llm_provider or settings.image_provider
@@ -233,7 +237,13 @@ class LLMService:
                 # 每次生成图片前等待2秒，避免触发限流
                 if i > 0:
                     time.sleep(2)
-                image_url = self.generate_image(prompt=segment["image_prompt"], resolution=request.resolution, image_llm_provider=request.image_llm_provider, image_llm_model=request.image_llm_model)
+                image_url = self.generate_image(
+                    prompt=segment["image_prompt"],
+                    resolution=request.resolution,
+                    image_llm_provider=request.image_llm_provider,
+                    image_llm_model=request.image_llm_model,
+                    global_image_prompt=request.global_image_prompt,
+                )
                 segment["url"] = image_url
             except Exception as e:
                 logger.error(f"Failed to generate image for segment: {e}")

@@ -1,4 +1,5 @@
 import { request } from "../utils/request";
+import axios from 'axios';
 
 export async function getVoiceList(data: {area: string[]}): Promise<VoiceListRes> {
     return request<VoiceListRes>({
@@ -29,4 +30,15 @@ export async function generateVideo(data: VideoGenerateReq): Promise<VideoGenera
         method: "post",
         data,
     });
+}
+
+export async function uploadImages(files: File[]): Promise<ImageUploadRes> {
+    const formData = new FormData();
+    files.forEach((file) => {
+        formData.append('files', file);
+    });
+    const response = await axios.post('http://127.0.0.1:8000/api/video/upload-images', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
 }

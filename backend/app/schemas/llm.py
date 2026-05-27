@@ -12,6 +12,7 @@ class StoryGenerationRequest(BaseModel):
     segments: int = Field(..., ge=1, le=10, description="Number of story segments to generate")
     story_prompt: str = Field(..., min_length=1, max_length=4000, description="Theme or topic of the story")
     language: Language = Field(default=Language.CHINESE_CN, description="Story language")
+    global_image_prompt: Optional[str] = Field(default=None, max_length=500, description="全局图片提示词，拼接到每张图片的prompt后面")
 
 
 class StorySegment(BaseModel):

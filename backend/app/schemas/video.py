@@ -307,9 +307,10 @@ class VideoGenerateRequest(BaseModel):
     story_prompt: Optional[str] = Field(default=None, description="故事提示词")
     story_scenes: Optional[List[StoryScene]] = Field(default=None, description="用户提供的故事场景列表，提供后跳过LLM故事生成")
     image_style: ImageStyle = Field(default=ImageStyle.realistic, description="图片风格")
-    voice_name: str = Field(default="zh-CN-XiaoxiaoNeural", description="语音名称")
+    voice_name: str = Field(default="zh-CN-liaoning-XiaobeiNeural", description="语音名称")
     voice_rate: float = Field(default=1.0, description="语音速率")
     resolution: Optional[str] = Field(default="1080*1620", description="分辨率")
+    global_image_prompt: Optional[str] = Field(default=None, max_length=500, description="全局图片提示词，拼接到每张图片的prompt后面")
 
 
 class VideoGenerateResponse(BaseModel):
