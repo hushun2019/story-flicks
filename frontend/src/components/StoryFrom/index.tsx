@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { FormProps } from 'antd';
 import { Button, Form, Input, Select, message, Space, Radio, Upload, Image } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -63,6 +63,7 @@ const App: React.FC = () => {
     const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
     const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
     const [uploading, setUploading] = useState(false);
+    const videoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const DEFAULT_LANGUAGE = 'zh-CN';
 
     useEffect(() => {
@@ -294,9 +295,16 @@ const App: React.FC = () => {
             }
         }
 
-        message.loading('Generating Video, please wait...', 0);
+        let seconds = 0;
+        message.loading({ content: `视频生成中，请耐心等待。。。(${seconds}秒)`, key: 'videoGen', style: { marginTop: '40vh' } }, 0);
+        videoTimerRef.current = setInterval(() => {
+            seconds++;
+            message.loading({ content: `视频生成中，请耐心等待。。。(${seconds}秒)`, key: 'videoGen', style: { marginTop: '40vh' } }, 0);
+        }, 1000);
+
         generateVideo(reqData).then(res => {
-            message.destroy();
+            if (videoTimerRef.current) { clearInterval(videoTimerRef.current); videoTimerRef.current = null; }
+            message.destroy('videoGen');
             if (res?.success === false) {
                 throw new Error(res?.message || 'Generate Video Failed');
             }
@@ -305,7 +313,8 @@ const App: React.FC = () => {
                 setVideoUrl(res.data.video_url);
             }
         }).catch(err => {
-            message.destroy();
+            if (videoTimerRef.current) { clearInterval(videoTimerRef.current); videoTimerRef.current = null; }
+            message.destroy('videoGen');
             message.error('Generate Video Failed: ' + (err?.message || JSON.stringify(err)), 10);
         });
     };
@@ -378,6 +387,7 @@ const App: React.FC = () => {
                         <Form.Item<FieldType>
                             label="全局图片提示词"
                             name="global_image_prompt"
+                            initialValue="图片中人物要求是现代人，男帅女俊"
                         >
                             <Input.TextArea
                                 rows={2}

@@ -7,10 +7,14 @@ import './locales/index';
 function App() {
   return (
     <div className="app">
-      <LanguageSelect />
       <div className="appMainArea">
-        <StoryForm />
-        <VideoResult />
+        <div className="appLeft">
+          <LanguageSelect />
+          <StoryForm />
+        </div>
+        <div className="appRight">
+          <VideoResult />
+        </div>
       </div>
     </div>
   )

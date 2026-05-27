@@ -1,9 +1,9 @@
 .languageCon {
-    width: 100vw;
     display: flex;
     flex-direction: row;
     justify-content: flex-end;
     align-items: center;
+    padding: 8px 0;
 }
 .changeText {
     margin-right: 10px;
