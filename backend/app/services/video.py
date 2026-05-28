@@ -95,7 +95,10 @@ def resize_image_to_target(image_path: str, target_w: int = 1080, target_h: int 
     
     # 如果已经是目标尺寸，直接返回
     if img_w == target_w and img_h == target_h:
+        logger.info(f"Image already at target size {target_w}x{target_h}, skipping: {image_path}")
         return
+    
+    logger.info(f"Resizing image from {img_w}x{img_h} to {target_w}x{target_h}: {image_path}")
     
     # 计算缩放比例，取较大值确保覆盖目标区域
     scale = max(target_w / img_w, target_h / img_h)
@@ -104,6 +107,7 @@ def resize_image_to_target(image_path: str, target_w: int = 1080, target_h: int 
     
     # 缩放
     img = img.resize((new_w, new_h), Image.LANCZOS)
+    logger.info(f"Scaled to {new_w}x{new_h} (scale={scale:.3f}), now cropping to {target_w}x{target_h}")
     
     # 居中裁剪
     left = (new_w - target_w) // 2
@@ -114,10 +118,10 @@ def resize_image_to_target(image_path: str, target_w: int = 1080, target_h: int 
     if img.mode == 'RGBA':
         img = img.convert('RGB')
     img.save(image_path)
-    logger.info(f"Resized image to {target_w}x{target_h}: {image_path}")
+    logger.info(f"Resized and cropped image saved: {image_path}")
 
 
-async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voice_name: str, voice_rate: float, test_mode: bool = False) -> str:
+async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voice_name: str, voice_rate: float, test_mode: bool = False, resolution: str = "1080*1620") -> str:
     """创建带有场景的视频
 
     Args:
@@ -126,7 +130,16 @@ async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voic
         voice_name (str): 语音名称
         voice_rate (float): 语音速率
         test_mode (bool): 是否为测试模式，如果是则使用已有的图片、音频、字幕文件
+        resolution (str): 目标分辨率，格式为 "宽*高" 或 "宽x高"
     """
+    # 解析分辨率
+    try:
+        sep = '*' if '*' in resolution else 'x'
+        target_w, target_h = int(resolution.split(sep)[0]), int(resolution.split(sep)[1])
+    except Exception:
+        target_w, target_h = 1080, 1620
+    logger.info(f"Video target resolution: {target_w}x{target_h}")
+
     clips = []
     for i, scene in enumerate(scenes, 1):
         try:
@@ -135,7 +148,7 @@ async def create_video_with_scenes(task_dir: str, scenes: List[StoryScene], voic
             
             # 统一缩放图片到目标尺寸，避免黑边
             if os.path.exists(image_file):
-                resize_image_to_target(image_file, 1080, 1620)
+                resize_image_to_target(image_file, target_w, target_h)
             audio_file = os.path.join(task_dir, f"{i}.mp3")
             subtitle_file = os.path.join(task_dir, f"{i}.srt")
 
@@ -358,7 +371,7 @@ async def generate_video(request: VideoGenerateRequest):
                 json.dump(story_data, f, ensure_ascii=False, indent=2)
         # return ""
         # 生成视频
-        return await create_video_with_scenes(task_dir, scenes, request.voice_name, request.voice_rate, request.test_mode)
+        return await create_video_with_scenes(task_dir, scenes, request.voice_name, request.voice_rate, request.test_mode, request.resolution or "1080*1620")
     except Exception as e:
         logger.error(f"Failed to generate video: {e}")
         raise e

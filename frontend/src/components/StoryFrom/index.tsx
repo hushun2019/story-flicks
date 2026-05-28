@@ -270,12 +270,12 @@ const App: React.FC = () => {
             story_prompt: values.story_prompt,
             voice_name: values.voice_name,
             voice_rate: values.voice_rate || 1,
+            resolution: values.resolution || '1080*1620',
         };
 
         if (imageMode === 'ai') {
             reqData.image_llm_provider = values.image_llm_provider;
             reqData.image_llm_model = values.image_llm_model;
-            reqData.resolution = values.resolution;
             if (values.global_image_prompt?.trim()) {
                 reqData.global_image_prompt = values.global_image_prompt.trim();
             }
@@ -378,13 +378,6 @@ const App: React.FC = () => {
                             <Input placeholder={t('storyForm.imageLLMPlaceholder')} />
                         </Form.Item>
                         <Form.Item<FieldType>
-                            label={t('storyForm.resolution')}
-                            name="resolution"
-                            rules={[{ required: true, message: t('storyForm.resolutionMissMsg') }]}
-                        >
-                            <Input placeholder={t('storyForm.resolutionPlaceholder')} />
-                        </Form.Item>
-                        <Form.Item<FieldType>
                             label="全局图片提示词"
                             name="global_image_prompt"
                             initialValue="图片中人物要求是现代人，男帅女俊"
@@ -398,6 +391,15 @@ const App: React.FC = () => {
                         </Form.Item>
                     </>
                 )}
+
+                {/* 图像分辨率（两种模式都可见） */}
+                <Form.Item<FieldType>
+                    label={t('storyForm.resolution')}
+                    name="resolution"
+                    rules={[{ required: true, message: t('storyForm.resolutionMissMsg') }]}
+                >
+                    <Input placeholder={t('storyForm.resolutionPlaceholder')} />
+                </Form.Item>
 
                 {/* 上传自定义图片模式 */}
                 {imageMode === 'upload' && (
