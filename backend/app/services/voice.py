@@ -1080,6 +1080,13 @@ Gender: Male
                     voices.append(f"{name}-{gender}")
                 name = ""
     voices.sort()
+    # 将 liaoning 音色排到第二位
+    liaoning_voices = [v for v in voices if 'liaoning' in v.lower()]
+    if liaoning_voices:
+        for lv in liaoning_voices:
+            voices.remove(lv)
+        for idx, lv in enumerate(liaoning_voices):
+            voices.insert(1 + idx, lv)
     return voices
 
 
