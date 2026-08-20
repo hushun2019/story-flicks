@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { FormProps } from 'antd';
-import { Button, Form, Input, Select, message, Space, Radio, Upload, Image } from 'antd';
+import { Button, Form, Input, Select, message, Space, Radio, Image } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next'
 import { getVoiceList, getLLMProviders, generateVideo, generateStory, uploadImages } from '../../services/index';
@@ -8,7 +8,6 @@ import { VOICE_LANGUAGES, VOICE_LANGUAGES_LABELS } from '../../constants';
 import { getSelectVoiceList } from '../../utils/index';
 import styles from './index.module.css'
 import { useVideoStore } from "../../stores/index";
-import type { UploadFile } from 'antd';
 
 type ImageMode = 'ai' | 'upload';
 
@@ -58,7 +57,7 @@ const App: React.FC = () => {
     const [nowVoiceList, setNowVoiceList] = useState<string[]>([]);
     const [llmProviders, setLLMProviders] = useState<LLMProvidersRes>({ textLLMProviders: [], imageLLMProviders: [], defaults: { text_llm_model: '', image_llm_model: '', resolution: '1080*1620' } });
     const [generatingText, setGeneratingText] = useState(false);
-    const [imageMode, setImageMode] = useState<ImageMode>('ai');
+    const [imageMode, setImageMode] = useState<ImageMode>('upload');
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [uploadedPreviews, setUploadedPreviews] = useState<string[]>([]);
     const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
@@ -148,6 +147,7 @@ const App: React.FC = () => {
 
         setUploadedFiles(totalFiles);
         setUploadedPreviews([...uploadedPreviews, ...newPreviews]);
+        setUploadedUrls([]);
 
         // 上传到后端
         setUploading(true);
@@ -177,6 +177,7 @@ const App: React.FC = () => {
 
         // 重新上传剩余文件
         if (newFiles.length > 0) {
+            setUploadedUrls([]);
             setUploading(true);
             try {
                 const res = await uploadImages(newFiles);
@@ -202,13 +203,9 @@ const App: React.FC = () => {
                 return;
             }
 
-            // 上传模式下，段落数 = 图片数
+            // 上传模式有图片时按图片数生成；无图片时使用表单默认段落数
             let segments = values.segments || 3;
-            if (imageMode === 'upload') {
-                if (uploadedFiles.length === 0) {
-                    message.warning('请先上传图片');
-                    return;
-                }
+            if (imageMode === 'upload' && uploadedFiles.length > 0) {
                 segments = uploadedFiles.length;
             }
 
@@ -244,18 +241,18 @@ const App: React.FC = () => {
             return;
         }
 
-        // 上传模式校验
+        const scenes = textToScenes(storyContent);
+
+        // 上传模式下，必须完成图片上传且图片数与故事段落数一致才能生成视频
         if (imageMode === 'upload') {
             if (uploadedFiles.length === 0) {
-                message.error('请先上传图片');
+                message.error('请先上传图片后再生成视频');
                 return;
             }
-            if (uploadedUrls.length === 0) {
+            if (uploading || uploadedUrls.length !== uploadedFiles.length) {
                 message.error('图片尚未上传完成，请稍候');
                 return;
             }
-            // 校验段落数 = 图片数
-            const scenes = textToScenes(storyContent);
             if (scenes.length !== uploadedUrls.length) {
                 message.error(`故事段落数(${scenes.length})与上传图片数(${uploadedUrls.length})不一致，请调整`);
                 return;
@@ -265,7 +262,8 @@ const App: React.FC = () => {
         const reqData: VideoGenerateReq = {
             text_llm_provider: values.text_llm_provider,
             text_llm_model: values.text_llm_model,
-            segments: values.segments,
+            image_mode: imageMode,
+            segments: imageMode === 'upload' ? scenes.length : values.segments,
             language: values.language,
             story_prompt: values.story_prompt,
             voice_name: values.voice_name,
@@ -281,18 +279,14 @@ const App: React.FC = () => {
             }
         }
 
-        // 解析故事内容为 scenes
-        if (storyContent) {
-            const scenes = textToScenes(storyContent);
-            if (imageMode === 'upload') {
-                // 上传模式：将上传的图片URL填入scenes
-                reqData.story_scenes = scenes.map((scene, i) => ({
-                    ...scene,
-                    url: uploadedUrls[i] || '',
-                }));
-            } else {
-                reqData.story_scenes = scenes;
-            }
+        if (imageMode === 'upload') {
+            // 上传模式：将上传的图片URL填入scenes
+            reqData.story_scenes = scenes.map((scene, i) => ({
+                ...scene,
+                url: uploadedUrls[i],
+            }));
+        } else {
+            reqData.story_scenes = scenes;
         }
 
         let seconds = 0;
@@ -487,7 +481,7 @@ const App: React.FC = () => {
                 <Form.Item<FieldType>
                     label={t('storyForm.voiceRate')}
                     name="voice_rate"
-                    initialValue={0.9}
+                    initialValue={1.0}
                 >
                     <Select>
                         <Select.Option value={0.6}>0.6x 极慢</Select.Option>
@@ -518,7 +512,7 @@ const App: React.FC = () => {
                     />
                 </Form.Item>
 
-                {/* AI模式下显示段落数，上传模式下自动等于图片数 */}
+                {/* AI模式下手动设置段落数；上传模式有图片时自动等于图片数，无图片时默认3段 */}
                 {imageMode === 'ai' && (
                     <Form.Item<FieldType>
                         label={t('storyForm.segments')}
@@ -529,9 +523,20 @@ const App: React.FC = () => {
                     </Form.Item>
                 )}
 
-                {imageMode === 'upload' && (
+                {/* 无图片时可设置故事段落数；上传图片后自动等于图片数 */}
+                {imageMode === 'upload' && uploadedFiles.length === 0 && (
+                    <Form.Item<FieldType>
+                        label={t('storyForm.segments')}
+                        name="segments"
+                        rules={[{ required: true, message: t('storyForm.segmentsMissMsg') }]}
+                    >
+                        <Input type="number" min={1} max={10} placeholder="3" addonAfter="（默认3段）" />
+                    </Form.Item>
+                )}
+
+                {imageMode === 'upload' && uploadedFiles.length > 0 && (
                     <Form.Item label={t('storyForm.segments')}>
-                        <Input disabled value={uploadedFiles.length || 0} addonAfter="（自动等于图片数）" />
+                        <Input disabled value={uploadedFiles.length} addonAfter="（自动等于图片数）" />
                     </Form.Item>
                 )}
 
@@ -541,7 +546,13 @@ const App: React.FC = () => {
                         <Button type="primary" onClick={handleGenerateText} loading={generatingText}>
                             {t('storyForm.generateStory')}
                         </Button>
-                        <Button type="primary" htmlType="submit" loading={uploading}>
+                        <Button
+                            type="primary"
+                            htmlType="submit"
+                            loading={uploading}
+                            disabled={imageMode === 'upload' && (uploadedFiles.length === 0 || uploadedUrls.length !== uploadedFiles.length)}
+                            title={imageMode === 'upload' && uploadedFiles.length === 0 ? '请先上传图片后再生成视频' : undefined}
+                        >
                             {t('storyForm.submit')}
                         </Button>
                     </Space>

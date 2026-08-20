@@ -288,8 +288,16 @@ async def generate_video(request: VideoGenerateRequest):
             request.test_mode = True
             scenes = [StoryScene(**scene) for scene in story_data.get("scenes", [])]
         else:
+            if request.image_mode == "upload":
+                if not request.story_scenes:
+                    raise ValueError("上传自定义图片模式下，请先上传图片后再生成视频")
+                if len(request.story_scenes) != request.segments:
+                    raise ValueError("故事段落数必须与上传图片数一致")
+                if any(not scene.url for scene in request.story_scenes):
+                    raise ValueError("上传自定义图片模式下，每个故事段落都必须有对应图片")
+
             if request.story_scenes:
-                # 用户已提供故事场景，跳过LLM故事生成，只生成图片
+                # 用户已提供故事场景，跳过LLM故事生成
                 scenes = request.story_scenes
                 for scene in scenes:
                     if not scene.url:

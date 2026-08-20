@@ -40,6 +40,7 @@ interface VideoGenerateReq {
     image_llm_provider?: string;
     text_llm_model?: string;
     image_llm_model?: string;
+    image_mode?: 'ai' | 'upload';
     test_mode?: boolean;
     task_id?: string;
     segments: number;

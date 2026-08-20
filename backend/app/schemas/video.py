@@ -288,6 +288,11 @@ class BgmUploadResponse(BaseResponse):
 
 from app.models.const import StoryType, ImageStyle
 
+class ImageMode(str, Enum):
+    ai = "ai"
+    upload = "upload"
+
+
 class StoryScene(BaseModel):
     """故事场景"""
     text: str = Field(description="场景文本")
@@ -300,6 +305,7 @@ class VideoGenerateRequest(BaseModel):
     image_llm_provider: Optional[str] = Field(default=None, description="Image LLM provider")
     text_llm_model: Optional[str] = Field(default=None, description="Text LLM model")
     image_llm_model: Optional[str] = Field(default=None, description="Image LLM model")
+    image_mode: ImageMode = Field(default=ImageMode.ai, description="图片来源模式")
     test_mode: bool = Field(default=False, description="是否为测试模式")
     task_id: Optional[str] = Field(default=None, description="任务ID")
     segments: int = Field(default=3, ge=1, le=10, description="分段数量")
